@@ -1,3 +1,5 @@
+# Binary Coalescence
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -44,6 +46,35 @@ def qij(x):
   '''
   return mu*(np.outer(x,x) - np.identity(3)*np.dot(x,x)/3)
 
+def third_derivative(f,h):
+  '''
+  Third derivative of a function
+  '''
+  return (3*f[0] - 14*f[1] + 24*f[2] - 18*f[3] + 5*f[4])/(2*h**3)
+
+# Time evolution
+def advance_time(i):
+  global dt
+  ecc = eccentricity(E,L)
+  p = semilatus(L)
+  # Update the state variables
+  time[i+1] = time[i] + dt
+  angle[i+1] = phi(L, position[i,3], angle[i])
+  position[i+1] = ellipse(p, ecc, angle[i+1])
+  q[i+1] = qij(position[i,0:3])
+
+  # Check the separation radius to change the time-step
+  if position[i+1,3]>1E-1:
+    dt = 1E-4 # time-step back to the original
+    r_crit = 1E-1 # critical radius back to the original
+  elif position[i+1,3]<r_crit:
+    dt = 0.01*dt # diminish the time-step
+    r_crit = 0.01*r_crit # diminish the critical radius
+  elif position[i+1,3]>r_crit:
+    dt = 100*dt # increase the time-step
+    r_crit = 100*r_crit # increase the critical radius
+
+
 G = 4*np.pi**2 # Gravitational constant
 c = 63197.8 # Speed of light in units of au/yr
 
@@ -71,10 +102,10 @@ n = 50000 # number of steps
 time = np.zeros(n)
 dt = 1E-4 # timestep
 
-
-position = np.zeros([n,4])
-angle = np.zeros(n)
+position = np.zeros([n,4]) # Position
+angle = np.zeros(n) # True Anomaly
 q = np.zeros([n,3,3]) # Quadrupole tensor
+q3 = np.zeros([3,3]) # Third derivative of the Quadrupole tensor
 
 # Initial condition in the grid
 angle[0] = 0.
@@ -84,37 +115,32 @@ q[0] = qij(position[0,0:3])
 # Critical radius to modify dt
 r_crit = 1E-1
 
+
+# First four steps without lose of E and L
+for i in range(4):
+  advance_time(i)
+
+
 # Main Loop
-for i in range(n-1):
-  ecc = eccentricity(E,L)
-  p = semilatus(L)
+for i in range(4,n-1):
   # Check for the merge of the binary system
   if position[i,3]<r_merge:
     print('Binary system merged after {:.5f} years using {:.0f} steps'.format(time[i],i))
     print('\n The final separation distance is {:.5e} au.\n'.format(position[-1,3]))
     break
 
-  time[i+1] = time[i] + dt
-  angle[i+1] = phi(L, position[i,3], angle[i])
-  position[i+1] = ellipse(p, ecc, angle[i+1])
-  q[i+1] = qij(position[i,0:3])
-  
-  # Check the separation radius to change the time-step
-  if position[i+1,3]>1E-1:
-    dt = 1E-4 # time-step back to the original
-    r_crit = 1E-1 # critical radius back to the original
-  elif position[i+1,3]<r_crit:
-    dt = 0.01*dt # diminish the time-step
-    r_crit = 0.01*r_crit # diminish the critical radius
-  elif position[i+1,3]>r_crit:
-    dt = 100*dt # increase the time-step
-    r_crit = 100*r_crit # increase the critical radius
-  
+  advance_time(i)
+  #print(q[i-4:5,0,0][4])
+  q3 = third_derivative(q[i-4:i+2],dt)
+  dE = (G/(5*c**5))*(q3[0,0]**2 + q3[1,1]**2 + q3[2,2]**2 + 2*q3[0,1]**2 +\
+                   2*q3[0,2]**2 + 2*q3[1,2]**2)
+
   #Energy and Angular Momentum lose model 
   L = L-5*dt
   E = E-5*dt
   if L < 0:
     L = 0.
+
 
 
 
@@ -125,4 +151,6 @@ plt.axhline(color='black',alpha=0.3)
 plt.axvline(color='black',alpha=0.3)
 plt.xlabel(r'$x$')
 plt.ylabel(r'$y$')
+plt.title('Binary System Coalescence')
+plt.savefig('BinarySystemCoalescence.jpg')
 plt.show()
