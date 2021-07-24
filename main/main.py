@@ -46,6 +46,13 @@ def qij(x):
   '''
   return mu*(np.outer(x,x) - np.identity(3)*np.dot(x,x)/3)
 
+def second_derivative(f,h):
+  '''
+  Second derivative of a function
+  '''
+  return (11*f[0] - 56*f[1] + 114*f[2] - 104*f[3] + 35*f[4])/(12*h**2)
+
+
 def third_derivative(f,h):
   '''
   Third derivative of a function
@@ -55,6 +62,7 @@ def third_derivative(f,h):
 # Time evolution
 def advance_time(i):
   global dt
+  global r_crit
   ecc = eccentricity(E,L)
   p = semilatus(L)
   # Update the state variables
@@ -65,7 +73,7 @@ def advance_time(i):
 
   # Check the separation radius to change the time-step
   if position[i+1,3]>1E-1:
-    dt = 1E-4 # time-step back to the original
+    dt = 1E-3 # time-step back to the original
     r_crit = 1E-1 # critical radius back to the original
   elif position[i+1,3]<r_crit:
     dt = 0.01*dt # diminish the time-step
@@ -92,20 +100,23 @@ r2 = 2*G*m2/c**2 # Schwarzschild radius for m2
 r_merge = r1 + r2 # Separation distance for fusion/collision
 
 # Initial Values
-E = -70. # energy
-L = 50. # angular momentum
+E = -300. # energy
+L = 15. # angular momentum
 omega = np.pi/3 # argument of the pericenter
 
 
 # Time grid definition
-n = 50000 # number of steps
+n = 500000 # number of steps
 time = np.zeros(n)
-dt = 1E-4 # timestep
+dt = 1E-3 # timestep
 
 position = np.zeros([n,4]) # Position
 angle = np.zeros(n) # True Anomaly
 q = np.zeros([n,3,3]) # Quadrupole tensor
-q3 = np.zeros([3,3]) # Third derivative of the Quadrupole tensor
+d3qdt = np.zeros([3,3]) # Third derivative of the Quadrupole tensor
+d2qdt = np.zeros([3,3]) # Second derivative of the Quadrupole tensor
+h_plus = np.zeros(n) # h_+ polarization component of the GW
+h_cross = np.zeros(n) # h_x polarization component of the GW
 
 # Initial condition in the grid
 angle[0] = 0.
@@ -130,14 +141,21 @@ for i in range(4,n-1):
     break
 
   advance_time(i)
-  #print(q[i-4:5,0,0][4])
-  q3 = third_derivative(q[i-4:i+2],dt)
-  dE = (G/(5*c**5))*(q3[0,0]**2 + q3[1,1]**2 + q3[2,2]**2 + 2*q3[0,1]**2 +\
-                   2*q3[0,2]**2 + 2*q3[1,2]**2)
-
-  #Energy and Angular Momentum lose model 
-  L = L-5*dt
-  E = E-5*dt
+  # Third derivative of the quadrupole tensor
+  d3qdt = third_derivative(q[i-4:i+2],dt)
+  dE = (G/(5*c**5))*(d3qdt[0,0]**2 + d3qdt[1,1]**2 + d3qdt[2,2]**2 +\
+                     2*d3qdt[0,1]**2 + 2*d3qdt[0,2]**2 + 2*d3qdt[1,2]**2)
+  # Second derivative of the quadrupole tensor
+  d2qdt = second_derivative(q[i-4:i+2],dt)
+  dL = (2*G/(5*c**5))*(d2qdt[0,0]*d3qdt[1,0] + d2qdt[0,1]*d3qdt[1,1] +\
+                       d2qdt[0,2]*d3qdt[1,2] - d2qdt[1,0]*d3qdt[0,0] -\
+                       d2qdt[1,1]*d3qdt[0,1] - d2qdt[1,2]*d3qdt[0,2])
+  h_plus[i] = (d2qdt[0,0] - d2qdt[1,1])/position[i,3]
+  h_cross[i] = 2*d2qdt[0,1]/position[i,3]
+  
+  #Energy and Angular Momentum change (Amplified version)
+  L = L - 1e8*dL*dt
+  E = E - 1e8*dE*dt
   if L < 0:
     L = 0.
 
