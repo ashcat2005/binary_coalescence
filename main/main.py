@@ -161,8 +161,6 @@ for i in range(4,n-1):
 
 
 
-
-
 plt.figure(figsize=(10,7))
 plt.plot(position[:,0],position[:,1])
 plt.axhline(color='black',alpha=0.3)
